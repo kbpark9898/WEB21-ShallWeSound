@@ -3,6 +3,10 @@ import config from '../config.host.json';
 import { useInfiniteScroll } from '../hooks/useinfiniteScroll';
 import { musicResultItem } from '../types';
 import Progress from '../components/Util/Progress';
+import { useSocket } from '../context/MyContext';
+import { Socket } from 'socket.io-client';
+import { RouteComponentProps } from 'react-router';
+import { SocketAddress } from 'net';
 
 interface ResultState {
   musicList: musicResultItem[];
@@ -189,13 +193,15 @@ function SearchResultItem({
   );
 }
 
-const ResultPages = () => {
+const ResultPages = ({ history }: { history: RouteComponentProps['history'] }) => {
   const [resultList, setResultList] = useState<ResultState>({
     musicList: [],
     hasMore: false,
   });
   const keyword = useRef('');
   const page = useRef(0);
+
+  const socket: Socket = useSocket()!;
 
   const fetchMusics = async (more = true) => {
     fetch(`${config.localhost}/api/music?keyword=${keyword.current}&page=${page.current}`)
@@ -226,6 +232,16 @@ const ResultPages = () => {
   useEffect(() => {
     page.current = musicList.length;
   }, [musicList]);
+
+  useEffect(() => {
+    socket.on('routingAfterCreateRoom', (roomNumber: number) => {
+      history.push(`/room/${roomNumber}`);
+    });
+
+    return () => {
+      socket.off('routingAfterCreateRoom');
+    };
+  }, []);
 
   const setObserveTarget = useInfiniteScroll(fetchMusics);
 
