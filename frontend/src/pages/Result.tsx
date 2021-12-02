@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef, forwardRef, MutableRefObject } from 'react';
+import React, { useEffect, useState, useRef, forwardRef } from 'react';
 import config from '../config.host.json';
 import { useInfiniteScroll } from '../hooks/useinfiniteScroll';
 import { musicResultItem } from '../types';
+import Progress from '../components/Util/Progress';
 
 interface ResultState {
   musicList: musicResultItem[];
@@ -10,35 +11,23 @@ interface ResultState {
 
 function SearchedMusicPlayer ({ path, isPlay } : { path: string, isPlay: boolean }) {
   const musicControl = useRef<HTMLVideoElement | null>(null);
-  const musicProgress = useRef<HTMLInputElement>(null);
-  const volumeProgress = useRef<HTMLInputElement>(null);
   const [musicPlayerState, setMusicPlayerState] = useState({
-    currentTime: 0,
-    volume: 0.5,
-    backupVolume: 0.5
+    currentTime: "",
+    duration: "",
+    progressDegree: 0,
   });
+  const [musicVolumeState, setMusicVolumeState] = useState({
+    volume: 50,
+    backupVolume: 50,
+    progressDegree: 50,
+  })
 
-  function updateCurrentTime() {
+  useEffect(() => {
     const playingMusic = musicControl.current;
-    const playingMusicProgress = musicProgress.current;
-    if (playingMusic && playingMusicProgress) {
-      playingMusicProgress.value = playingMusic.currentTime.toString();
-      setMusicPlayerState({
-        ...musicPlayerState,
-        currentTime: playingMusic.currentTime
-      });
-      playingMusicProgress.style.backgroundSize = (playingMusic.currentTime * 100) / playingMusic.duration + '% 100%';
+    if (playingMusic) {
+      isPlay ? playingMusic.play() : playingMusic.pause();
     }
-  }
-
-  function changeInputRange(e: any) {
-    const playingMusic = musicControl.current;
-    const playingMusicProgress = musicProgress.current;
-    if (playingMusic && playingMusicProgress) {
-      playingMusic.currentTime = parseFloat(playingMusicProgress.value);
-      playingMusicProgress.style.backgroundSize = (e.target.value * 100) / e.target.max + '% 100%';
-    }
-  }
+  }, [isPlay]);
 
   function changeFormatToTime(number: number) {
     const minute = Math.floor(number / 60);
@@ -48,30 +37,56 @@ function SearchedMusicPlayer ({ path, isPlay } : { path: string, isPlay: boolean
     return `${minute}:${formattedSecond}`;
   }
 
-  function changeVolume(e: any) {
+  function updateCurrentTime() {
     const playingMusic = musicControl.current;
     if (playingMusic) {
-      playingMusic.volume = e.target.value / 100;
-      e.target.style.backgroundSize = e.target.value + '% 100%';
+      setMusicPlayerState({
+        ...musicPlayerState,
+        currentTime: changeFormatToTime(playingMusic.currentTime),
+        duration: changeFormatToTime(playingMusic.duration),
+        progressDegree: playingMusic.currentTime * 100 / playingMusic.duration,
+      });
+    }
+  }
+
+  function onChangeMusicProgress(val: number) {
+    const playingMusic = musicControl.current;
+    if (playingMusic) {
+      playingMusic.currentTime = val;
+      updateCurrentTime();
+    }
+  }
+
+  function onChangeVolume(e: number) {
+    const playingMusic = musicControl.current;
+    if (playingMusic) {
+      playingMusic.volume = e / 100;
+      setMusicVolumeState({
+        ...musicVolumeState,
+        volume: e,
+        progressDegree: e,
+      });
     }
   }
 
   function toggleVolume() {
     const playingMusic = musicControl.current;
-    const musicVolume = volumeProgress.current;
-    if (playingMusic && musicVolume) {
+    if (playingMusic) {
       if (playingMusic.volume > 0) {
-        setMusicPlayerState({
-          ...musicPlayerState,
-          backupVolume: playingMusic.volume
+        setMusicVolumeState({
+          ...musicVolumeState,
+          volume: 0,
+          backupVolume: playingMusic.volume * 100,
+          progressDegree: 0,
         });
-        musicVolume.value = '0';
         playingMusic.volume = 0;
-        musicVolume.style.backgroundSize = playingMusic.volume * 100 + '% 100%';
       } else {
-        musicVolume.value = (musicPlayerState.backupVolume * 100).toString();
-        playingMusic.volume = musicPlayerState.backupVolume;
-        musicVolume.style.backgroundSize = playingMusic.volume * 100 + '% 100%';
+        setMusicVolumeState({
+          ...musicVolumeState,
+          volume: musicVolumeState.backupVolume,
+          progressDegree: musicVolumeState.backupVolume,
+        })
+        playingMusic.volume = musicVolumeState.backupVolume / 100;
       }
     }
   }
@@ -79,50 +94,41 @@ function SearchedMusicPlayer ({ path, isPlay } : { path: string, isPlay: boolean
   useEffect (() => {
     setMusicPlayerState({
       ...musicPlayerState,
-      currentTime: 0,
-      volume: 0.5,
+      currentTime: changeFormatToTime(0),
+      duration: musicControl.current ? changeFormatToTime(musicControl.current.duration) : "0",
     })
     toggleVolume();
     toggleVolume();
   }, []);
+
+  let musicProgressProps = {
+    tops: [musicPlayerState.currentTime, musicPlayerState.duration],
+    min: 0,
+    max: musicControl.current && musicControl.current.duration,
+    progressDegree: musicPlayerState.progressDegree,
+    onChange: onChangeMusicProgress,
+  }
+
+  let musicVolumeProps = {
+    lefts: [musicControl.current?.volume === 0 ? (
+      <img className="icon" src="/icons/volume-off.svg" alt="volume-off" onClick={toggleVolume} />
+    ) : (
+      <img className="icon" src="/icons/volume-up.svg" alt="volume-up" onClick={toggleVolume} />
+    )],
+    min: 0,
+    max: 100,
+    progressDegree: musicVolumeState.progressDegree,
+    onChange: onChangeVolume,
+  }
 
   return (
     <>
     <video src={path} ref={musicControl} autoPlay onTimeUpdate={updateCurrentTime}/> 
     {musicControl &&
       <div className="searched-musicplayer">
-        <div className="musicplayer-timer">
-          <span className="current-time">{changeFormatToTime(musicControl.current?.currentTime || 0)}</span>
-          <span className="max-duration">{changeFormatToTime(musicControl.current?.duration || 0)}</span>
-        </div>
-        <input
-          className="input-range"
-          name="musicplayer-progress"
-          ref={musicProgress}
-          type="range"
-          min="0"
-          max={musicControl.current?.duration}
-          onInput={changeInputRange}
-        />
-        <div className="serveral-icons">
-          <div className="volume-wrap width-half">
-            {musicControl.current?.volume === 0 ? (
-              <img className="icon" src="/icons/volume-off.svg" alt="volume-off" onClick={toggleVolume} />
-            ) : (
-              <img className="icon" src="/icons/volume-up.svg" alt="volume-up" onClick={toggleVolume} />
-            )}
-            <div className="progress-wrap width-half">
-              <input
-                className="input-range"
-                name="volume-progress"
-                ref={volumeProgress}
-                type="range"
-                min="0"
-                max="100"
-                onInput={changeVolume}
-              />
-            </div>
-          </div>
+        <Progress prop={musicProgressProps} />
+        <div className="volume-wrap width-quarter">
+          <Progress prop={musicVolumeProps} />
         </div>
       </div>
     }
@@ -132,9 +138,11 @@ function SearchedMusicPlayer ({ path, isPlay } : { path: string, isPlay: boolean
 
 function SearchResultItem ({ name, singer, thumbnail, description, path } : { name: string, singer: string, thumbnail: string, description: string, path: string }) {
   const [playMusic, setPlayMusic] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
 
   function togglePlayMusic () {
-      setPlayMusic(!playMusic);
+    if (!isOpen) { setIsOpen(true) };
+    setPlayMusic(!playMusic);
   }
 
   return (
@@ -158,12 +166,12 @@ function SearchResultItem ({ name, singer, thumbnail, description, path } : { na
           }
         </div>
       </div>
-      {playMusic && <SearchedMusicPlayer path={path} isPlay={playMusic} />}
+      {isOpen && <SearchedMusicPlayer path={path} isPlay={playMusic} />}
     </div>
   );
 }
 
-const ResultPages = (prop: any, ref: any) => {
+const ResultPages = () => {
   const [resultList, setResultList] = useState<ResultState>({
     musicList: [],
     hasMore: false,
